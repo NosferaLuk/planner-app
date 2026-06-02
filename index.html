@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planejador de Produção Minecraft</title>
+  <link rel="stylesheet" href="planner.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>⛏ Planejador de Produção</h1>
+      <div class="toolbar">
+        <button id="btnNewBlock" class="btn" title="Criar novo bloco">➕ Novo Bloco</button>
+        <button id="btnConnectMode" class="btn" title="Modo conexão (ligar blocos com setas)">🔗 Conectar</button>
+        <button id="btnGroup" class="btn" title="Agrupar blocos selecionados em fábrica">📦 Agrupar</button>
+        <button id="btnSavePreset" class="btn" title="Salvar blocos selecionados como preset">💎 Salvar Preset</button>
+        <button id="btnUngroup" class="btn" title="Desagrupar">✂️ Desagrupar</button>
+        <button id="btnDelete" class="btn btn-danger" title="Excluir selecionado">🗑 Excluir</button>
+        <span class="separator"></span>
+        <button id="btnSave" class="btn" title="Salvar no navegador">💾 Salvar</button>
+        <button id="btnLoad" class="btn" title="Carregar do navegador">📂 Carregar</button>
+        <button id="btnExportPNG" class="btn" title="Exportar como PNG">🖼 PNG</button>
+        <button id="btnExport" class="btn" title="Exportar como JSON">📤 JSON</button>
+        <button id="btnImport" class="btn" title="Importar JSON">📥 Importar</button>
+        <span class="separator"></span>
+        <button id="btnZoomIn" class="btn" title="Aproximar">🔍+</button>
+        <button id="btnZoomOut" class="btn" title="Afastar">🔍-</button>
+        <button id="btnZoomSel" class="btn" title="Zoom na seleção (H)">🎯</button>
+        <button id="btnResetView" class="btn" title="Resetar visão">⟲</button>
+        <span class="separator"></span>
+        <button id="btnToggleGrid" class="btn" title="Mostrar/esconder grid">▦</button>
+        <button id="btnToggleMinimap" class="btn" title="Mostrar/esconder minimapa">🗺</button>
+        <span class="separator"></span>
+        <button id="btnCollab" class="btn" title="Colaboração em tempo real (BroadcastChannel ou WebSocket)">👥 Colaborar</button>
+        <button id="btnSettings" class="btn" title="Configurações">⚙</button>
+      </div>
+    </header>
+
+    <div id="main">
+      <button class="sidebar-toggle" id="toggle-left" title="Mostrar/esconder barra">◀</button>
+      <aside id="sidebar-left">
+        <section id="palette-section">
+          <h3>Paleta</h3>
+          <div class="palette-item" data-type="input" title="Fonte de itens — fornece recursos ao fluxo (ex: Mina, Fazenda, Transportador)">
+            <div class="palette-color input-bg"></div>
+            <span>Fonte</span>
+          </div>
+          <div class="palette-item" data-type="processing" title="Máquina simples — transforma insumos em produtos com receita fixa (ex: Fornalha, Alto-forno)">
+            <div class="palette-color processing-bg"></div>
+            <span>Máquina</span>
+          </div>
+          <div class="palette-item" data-type="output" title="Destino de itens — consome o que chega, ponto final do fluxo (ex: Baú, Armazém)">
+            <div class="palette-color output-bg"></div>
+            <span>Destino</span>
+          </div>
+          <div class="palette-item" data-type="machinery" title="Fábrica completa — múltiplas entradas e saídas, modela receitas complexas (ex: Produção de Aço, Ferro)">
+            <div class="palette-color machinery-bg"></div>
+            <span>🏭 Fábrica</span>
+          </div>
+          <div class="palette-item" data-type="note" title="Anotação adesiva — texto livre para documentar o layout">
+            <div class="palette-color note-bg"></div>
+            <span>💬 Nota</span>
+          </div>
+        </section>
+        <section id="search-section">
+          <h3>🔍 Buscar Bloco</h3>
+          <input type="text" id="block-search" placeholder="nome..." style="width:100%;padding:4px 6px;border:1px solid #555;border-radius:3px;background:#1a1a2e;color:#fff;font-size:11px;box-sizing:border-box">
+        </section>
+
+        <section id="constants-section">
+          <h3>📋 Itens Constantes</h3>
+          <div id="constantsList"><p class="hint">Nenhum item constante.</p></div>
+          <button id="btnAddConstant" class="btn" style="width:100%;margin-top:4px">➕ Adicionar Item</button>
+        </section>
+
+        <section id="templates-section">
+          <h3>📋 Templates</h3>
+          <div id="templateList"></div>
+        </section>
+
+        <section id="presets-section">
+          <h3>Fábricas (Presets)</h3>
+          <div id="presetList">
+            <p class="hint">Nenhum preset salvo.</p>
+          </div>
+        </section>
+      </aside>
+
+      <div id="canvas-container">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="rgba(255,255,255,0.04)" stroke-width="0.5"/>
+            </pattern>
+            <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="rgba(255,255,255,0.2)"/>
+            </marker>
+            <marker id="arrowhead-active" markerWidth="10" markerHeight="7" refX="10" refY="3.5" orient="auto">
+              <polygon points="0 0, 10 3.5, 0 7" fill="#3b82f6"/>
+            </marker>
+            <filter id="shadow">
+              <feDropShadow dx="0" dy="3" stdDeviation="4" flood-opacity="0.25"/>
+            </filter>
+          </defs>
+          <rect id="grid-bg" width="100%" height="100%" fill="url(#grid)" opacity="0.4"/>
+          <g id="connection-layer"></g>
+          <g id="temp-connection"></g>
+          <g id="block-layer"></g>
+          <g id="group-layer"></g>
+          <g id="selection-box"></g>
+        </svg>
+
+        <div id="canvas-minimap">
+          <div id="minimap-canvas"></div>
+        </div>
+        <div id="props-popover" class="hidden">
+          <div id="props-popover-header">
+            <span id="props-popover-title">Propriedades</span>
+            <button id="props-popover-close">&times;</button>
+          </div>
+          <div id="props-popover-body">
+            <p class="hint">Clique num bloco ou conexão para editar.</p>
+          </div>
+        </div>
+      </div>
+
+      <aside id="sidebar-right">
+        <section id="stats-section">
+          <h3>Resumo do Fluxo</h3>
+          <div id="stats-content">
+            <p class="hint">Itens consumidos vs gerados aparecerão aqui.</p>
+          </div>
+        </section>
+      </aside>
+      <button class="sidebar-toggle" id="toggle-right" title="Mostrar/esconder barra">▶</button>
+    </div>
+
+    <div id="status-bar">
+      <span id="status-text">Pronto</span>
+      <span id="status-coords">0, 0</span>
+    </div>
+  </div>
+
+  <!-- Context Menu -->
+  <div id="context-menu" class="ctx-menu hidden"></div>
+
+  <!-- Quick Create Menu -->
+  <div id="quick-create-menu" class="ctx-menu hidden"></div>
+
+  <!-- Modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-content">
+      <span id="modal-close" class="modal-close">&times;</span>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+  <datalist id="mc-items-autocomplete">
+    <option value="minério de ferro"><option value="minério de ouro"><option value="lingote de ferro">
+    <option value="lingote de ouro"><option value="carvão"><option value="diamante"><option value="redstone">
+    <option value="pedra"><option value="madeira"><option value="tábua"><option value="graveto">
+    <option value="vidro"><option value="areia"><option value="trigo"><option value="farinha de osso">
+    <option value="água"><option value="lava"><option value="balde"><option value="fio de aranha">
+    <option value="osso"><option value="pólvora"><option value="slimeball"><option value="obsidiana">
+    <option value="fornalha"><option value="funil"><option value="baú"><option value="bigorna">
+    <option value="aço"><option value="escória"><option value="carvão vegetal"><option value="lingote de netherita">
+    <option value="minério de carvão"><option value="minério de cobre"><option value="minério de diamante">
+    <option value="minério de esmeralda"><option value="minério de redstone">
+    <option value="ferro bruto"><option value="ouro bruto"><option value="cobre bruto">
+  </datalist>
+  <script src="planner.js"></script>
+</body>
+</html>
