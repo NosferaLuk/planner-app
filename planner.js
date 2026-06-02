@@ -23,7 +23,8 @@ const state = {
   filterText: '',
   showGrid: true,
   showMinimap: true,
-  relayUrl: localStorage.getItem('planner_relay_url') || 'https://planner-relay.onrender.com',
+  relayUrl: localStorage.getItem('planner_relay_url') || '',
+  collabRoom: localStorage.getItem('planner_room') || '',
 };
 
 // ===== UNDO/REDO =====
@@ -2215,10 +2216,67 @@ let _collabReconnectTimer = null;
 const COLLAB_CHANNEL = 'planner-collab-v1';
 
 function toggleCollab() {
+  if (!_collabEnabled) {
+    // Show room dialog if no room set
+    if (!state.collabRoom) {
+      showCollabRoomDialog();
+      return;
+    }
+  }
   _collabEnabled = !_collabEnabled;
   if (_collabEnabled) startCollab();
   else stopCollab();
   $('btnCollab')?.classList.toggle('active', _collabEnabled);
+}
+
+function showCollabRoomDialog() {
+  showModal('👥 Colaborar', `
+    <p class="hint" style="margin-bottom:8px">Compartilhe uma sala com outras pessoas.</p>
+    <div class="form-group">
+      <label>Criar sala</label>
+      <button class="btn-primary" id="dlg-room-create" style="width:100%">🔑 Gerar código da sala</button>
+    </div>
+    <div class="form-group">
+      <label>Entrar em sala</label>
+      <input type="text" id="dlg-room-code" placeholder="código da sala" style="width:100%;box-sizing:border-box">
+      <div style="margin-top:4px">
+        <button class="btn-primary" id="dlg-room-join" style="width:100%">Entrar</button>
+      </div>
+    </div>
+    <div style="margin-top:8px;padding-top:8px;border-top:1px solid #333">
+      <button class="btn-secondary" id="dlg-room-broadcast" style="width:100%">📡 Usar BroadcastChannel (mesmo navegador)</button>
+    </div>
+  `);
+  document.getElementById('dlg-room-create').addEventListener('click', () => {
+    state.collabRoom = Math.random().toString(36).slice(2, 8).toUpperCase();
+    localStorage.setItem('planner_room', state.collabRoom);
+    hideModal();
+    _collabEnabled = true;
+    startCollab();
+    $('btnCollab')?.classList.add('active');
+    setStatus(`👥 Sala: ${state.collabRoom} — compartilhe este código`);
+  }, { once: true });
+  document.getElementById('dlg-room-join').addEventListener('click', () => {
+    const code = document.getElementById('dlg-room-code').value.trim().toUpperCase();
+    if (!code) { setStatus('Digite um código'); return; }
+    state.collabRoom = code;
+    localStorage.setItem('planner_room', state.collabRoom);
+    hideModal();
+    _collabEnabled = true;
+    startCollab();
+    $('btnCollab')?.classList.add('active');
+    setStatus(`👥 Conectado à sala: ${state.collabRoom}`);
+  }, { once: true });
+  document.getElementById('dlg-room-broadcast').addEventListener('click', () => {
+    state.collabRoom = '';
+    localStorage.removeItem('planner_room');
+    hideModal();
+    _collabEnabled = true;
+    startCollab();
+    $('btnCollab')?.classList.add('active');
+    setStatus('👥 Colaboração local ativa');
+  }, { once: true });
+  setTimeout(() => document.getElementById('dlg-room-code')?.focus(), 100);
 }
 
 function startCollab() {
@@ -2231,10 +2289,16 @@ function startCollab() {
     else if (url.startsWith('http://')) url = 'ws://' + url.slice(7);
     else if (!url.startsWith('ws://') && !url.startsWith('wss://')) url = 'wss://' + url;
     connectWs(url);
+    // Send join with room
+    broadcastCollab(makeCollabMsg('join'));
   } else {
     _collabTransport = 'broadcast';
     connectBroadcast();
   }
+}
+
+function makeCollabMsg(type, extra) {
+  return { type, session: _collabSessionId, room: state.collabRoom || '', ...extra };
 }
 
 function stopCollab() {
@@ -2255,7 +2319,7 @@ function connectBroadcast() {
       if (!msg || msg.session === _collabSessionId) return;
       handleCollabMessage(msg);
     };
-    broadcastCollab({ type: 'join', session: _collabSessionId });
+    broadcastCollab(makeCollabMsg('join'));
     setStatus('👥 Colaboração local ativa');
   } catch (e) {
     setStatus('Erro: ' + e.message);
@@ -2270,7 +2334,7 @@ function connectWs(url) {
     _collabWs.onopen = () => {
       setStatus('👥 Conectado ao relay');
       clearTimeout(_collabReconnectTimer);
-      broadcastCollab({ type: 'join', session: _collabSessionId });
+      broadcastCollab(makeCollabMsg('join'));
     };
     _collabWs.onmessage = (e) => {
       try {
@@ -2297,13 +2361,14 @@ function connectWs(url) {
 }
 
 function handleCollabMessage(msg) {
+  if (state.collabRoom && msg.room && msg.room !== state.collabRoom) return;
   if (msg.type === 'state') {
     _collabReceiveLock = true;
     loadFullState(msg.state, true);
     _collabReceiveLock = false;
     setStatus('👥 Sincronizado');
   } else if (msg.type === 'join') {
-    broadcastCollab({ type: 'state', session: _collabSessionId, state: getFullState() });
+    broadcastCollab(makeCollabMsg('state', { state: getFullState() }));
     setStatus('👥 Novo participante conectado');
   }
 }
@@ -2320,7 +2385,7 @@ function scheduleCollabSync() {
   if (!_collabEnabled || _collabReceiveLock) return;
   clearTimeout(_collabDebounceTimer);
   _collabDebounceTimer = setTimeout(() => {
-    broadcastCollab({ type: 'state', session: _collabSessionId, state: getFullState() });
+    broadcastCollab(makeCollabMsg('state', { state: getFullState() }));
   }, 400);
 }
 
@@ -3018,6 +3083,13 @@ function init() {
   setupPropsDelegation();
   applyView();
   new ResizeObserver(() => applyView()).observe(canvas);
+
+  // Detect room from URL: ?room=XXXX
+  const urlRoom = new URLSearchParams(window.location.search).get('room');
+  if (urlRoom) {
+    state.collabRoom = urlRoom.trim().toUpperCase();
+    localStorage.setItem('planner_room', state.collabRoom);
+  }
 
   const saved = localStorage.getItem('planner_state');
   if (saved) { try { loadFullState(JSON.parse(saved)); setStatus('Projeto carregado'); } catch (e) { console.warn('Failed to load saved state:', e); } }
