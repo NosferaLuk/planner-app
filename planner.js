@@ -2269,11 +2269,12 @@ function connectWs(url) {
     _collabWs.onopen = () => {
       setStatus('👥 Conectado ao relay');
       clearTimeout(_collabReconnectTimer);
+      broadcastCollab({ type: 'join', session: _collabSessionId });
     };
     _collabWs.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-        if (msg.type === 'peers') { /* could update count */ return; }
+        if (msg.type === 'peers') { setStatus(`👥 ${msg.count} dispositivo(s) conectado(s)`); return; }
         if (msg.session === _collabSessionId) return;
         handleCollabMessage(msg);
       } catch (err) { /* ignore malformed */ }
