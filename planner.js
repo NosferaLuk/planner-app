@@ -2266,6 +2266,7 @@ function connectBroadcast() {
 function connectWs(url) {
   try {
     _collabWs = new WebSocket(url);
+    _collabWs.binaryType = 'arraybuffer';
     _collabWs.onopen = () => {
       setStatus('👥 Conectado ao relay');
       clearTimeout(_collabReconnectTimer);
@@ -2274,7 +2275,8 @@ function connectWs(url) {
     };
     _collabWs.onmessage = (e) => {
       try {
-        const msg = JSON.parse(e.data);
+        const raw = typeof e.data === 'string' ? e.data : new TextDecoder().decode(e.data);
+        const msg = JSON.parse(raw);
         console.log('[WS RECV]', msg.type, msg.session?.slice(0,6)+'...', msg.type === 'state' ? Object.keys(msg.state?.blocks||{}).length+' blocks' : '');
         if (msg.type === 'peers') { setStatus(`👥 ${msg.count} dispositivo(s) conectado(s)`); return; }
         if (msg.session === _collabSessionId) return;
