@@ -2269,15 +2269,17 @@ function connectWs(url) {
     _collabWs.onopen = () => {
       setStatus('👥 Conectado ao relay');
       clearTimeout(_collabReconnectTimer);
+      console.log('[WS] connected, sending join');
       broadcastCollab({ type: 'join', session: _collabSessionId });
     };
     _collabWs.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
+        console.log('[WS RECV]', msg.type, msg.session?.slice(0,6)+'...', msg.type === 'state' ? Object.keys(msg.state?.blocks||{}).length+' blocks' : '');
         if (msg.type === 'peers') { setStatus(`👥 ${msg.count} dispositivo(s) conectado(s)`); return; }
         if (msg.session === _collabSessionId) return;
         handleCollabMessage(msg);
-      } catch (err) { /* ignore malformed */ }
+      } catch (err) { console.warn('[WS ERR]', err); }
     };
     _collabWs.onclose = () => {
       if (_collabEnabled) {
@@ -2295,12 +2297,15 @@ function connectWs(url) {
 }
 
 function handleCollabMessage(msg) {
+  console.log('[COLLAB] handle', msg.type, msg.session?.slice(0,6)+'...');
   if (msg.type === 'state') {
+    console.log('[COLLAB] loading state with', Object.keys(msg.state?.blocks||{}).length, 'blocks');
     _collabReceiveLock = true;
     loadFullState(msg.state, true);
     _collabReceiveLock = false;
     setStatus('👥 Sincronizado');
   } else if (msg.type === 'join') {
+    console.log('[COLLAB] join from', msg.session?.slice(0,6)+'..., sending state');
     broadcastCollab({ type: 'state', session: _collabSessionId, state: getFullState() });
     setStatus('👥 Novo participante conectado');
   }
